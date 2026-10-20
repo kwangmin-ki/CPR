@@ -1,0 +1,49 @@
+task: commonsense_qa
+dataset_path: tau/commonsense_qa
+output_type: generate_until
+training_split: train
+validation_split: validation
+fewshot_config:
+  sampler: first_n
+  doc_to_text: "Question: {{question}}\nAnswer: Let's think step by step."
+  doc_to_target: "{{target}}"
+  samples:
+    - question: "When an arguer causes confusion during refutation because of real or feigned lack of an ability to engage in refutation, that arguer may have committed the fallacy of\n(A) poor sportsmanship (B) appeal to compassion (C) argument against the person (D) ignorance of refutation"
+      target: "Ignorance of refutation, one of Aristotle's original list of logical fallacies in his Organon, is when someone causes confusion in an argument through real or feigned inability to engage in refutation, in order to win the argument. The answer is (D)."
+    - question: "When older adults move to a new state after retirement, which of the following is the more likely destination?\n(A) Texas (B) California (C) Hawaii (D) Vermont"
+      target: "Texas does not have state tax, and has low cost of living compared with the other three options. The answer is (A)."
+doc_to_text: "Question: {{question.strip()}}\n{% for label in choices.label %}({{label}}) {{choices.text[loop.index0]}} {% endfor %}\nAnswer: Let's think step by step."
+doc_to_target: "({{answerKey}})"
+filter_list:
+  - name: "strict-match"
+    filter:
+      - function: "regex"
+        regex_pattern: "((?<=The answer is )(.*)(?=.)|(?<=answer is )(.*)(?=.)|(?<=The answer: )(.*)(?=.)|(?<=The final answer: )(.*)(?=.))"
+      - function: "take_first"
+  - name: "flexible-extract"
+    filter:
+      - function: "multi_choice_regex"
+        group_select: -1
+        ignore_case: true
+        ignore_punctuation: true
+        regex_pattern: "(\\([A-Z]\\))"
+      - function: "take_first"
+generation_kwargs:
+  until:
+    - "\nQuestion:"
+    - "</s>"
+    - "Q:"
+    - "<|im_end|>"
+    - "<eos>"
+    - "<end_of_turn>"
+  do_sample: false
+  temperature: 0.0
+num_fewshot: 2
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+    ignore_case: true
+    ignore_punctuation: true
+metadata:
+  version: 1.0

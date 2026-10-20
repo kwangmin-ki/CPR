@@ -1,0 +1,10 @@
+torch>=2.1
+transformers>=4.50
+datasets>=2.19
+accelerate>=0.30
+tqdm
+numpy
+
+# Evaluation: bundled lm-evaluation-harness (with the CPR model adapter and task configs)
+-e ./lm-evaluation-harness
+

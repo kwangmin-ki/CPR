@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Models, checkpoints, data
+/checkpoints/
+/model/
+/models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# Outputs
+/results/
+/logs/
+/wandb/
+*.jsonl
+*.parquet
+*.log
+
+# Environment / secrets
+.env
+.venv/

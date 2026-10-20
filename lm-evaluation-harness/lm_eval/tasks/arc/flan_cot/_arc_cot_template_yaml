@@ -1,0 +1,47 @@
+dataset_path: allenai/ai2_arc
+output_type: generate_until
+training_split: train
+validation_split: validation
+test_split: test
+fewshot_config:
+  sampler: first_n
+  samples:
+    - question: "Which of the following is not known to be involved in the control of cell division?\n(A) Cyclins (B) Protein kinases (C) Checkpoints (D) Fibroblast cells"
+      target: "Normal cells move through the cell cycle in a regulated way. At the checkpoint stage, they use information about their own internal state and cues from the environment around them to decide whether to proceed with cell division. Cues like these act by changing the activity of core cell cycle regulators inside the cell. The most common regulators are cyclins and cyclin-dependent kinases. Fibroblast cells do not play any role in cell division. The answer is (D)."
+    - question: "From the solubility rules, which of the following is true?\n(A) All chlorides, bromides, and iodides are soluble (B) All sulfates are soluble (C) All hydroxides are soluble (D) All ammonium-containing compounds are soluble"
+      target: "The chlorides, bromides, and iodides of lead, silver, and mercury are not soluble in water. This rules out (A). The sulfates of lead, barium, and calcium are not soluble in water, which rules out (B). The hydroxides of any metal besides sodium, potassium, ammonium, calcium, and barium are insoluble. This rules out (C). Typically ammonium ions indicate a soluble ionic substance. The answer is (D)."
+doc_to_text: "Question: {{question.strip()}}\n{% if choices is defined %}{% for label in choices.label %}({{label}}) {{choices.text[loop.index0]}} {% endfor %}\n{% endif %}Answer: Let's think step by step."
+doc_to_target: "{{target if target is defined else '(' ~ answerKey ~ ')'}}"
+filter_list:
+  - name: "strict-match"
+    filter:
+      - function: "regex"
+        regex_pattern: "((?<=The answer is )(.*)(?=.)|(?<=answer is )(.*)(?=.)|(?<=The answer: )(.*)(?=.)|(?<=The final answer: )(.*)(?=.))"
+      - function: "take_first"
+  - name: "flexible-extract"
+    filter:
+      - function: "multi_choice_regex"
+        group_select: -1
+        ignore_case: true
+        ignore_punctuation: true
+        regex_pattern: "(\\([A-Z]\\))"
+      - function: "take_first"
+generation_kwargs:
+  until:
+    - "\nQuestion:"
+    - "</s>"
+    - "Q:"
+    - "<|im_end|>"
+    - "<eos>"
+    - "<end_of_turn>"
+  do_sample: false
+  temperature: 0.0
+num_fewshot: 2
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+    ignore_case: true
+    ignore_punctuation: true
+metadata:
+  version: 1.0

@@ -1,0 +1,5 @@
+tag:
+  - ai2_arc_cot_zeroshot
+task: arc_challenge_cot_zeroshot
+dataset_name: ARC-Challenge
+include: _arc_cot_template_yaml

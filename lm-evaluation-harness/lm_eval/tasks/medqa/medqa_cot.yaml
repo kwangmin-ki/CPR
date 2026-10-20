@@ -1,0 +1,47 @@
+task: medqa_4options_cot
+dataset_path: GBaker/MedQA-USMLE-4-options-hf
+output_type: generate_until
+training_split: train
+validation_split: validation
+test_split: test
+fewshot_config:
+  sampler: first_n
+  samples:
+    - question: "Glucose is transported into the muscle cell:\n(A) via protein transporters called GLUT4. (B) only in the presence of insulin. (C) via hexokinase. (D) via monocarbylic acid transporters."
+      target: "Glucose (also known as the blood sugar) is the main sugar found in the human body. It is transported into the muscle cell via diffusion through protein transporters called GLUT4. The answer is (A)."
+    - question: "In a genetic test of a newborn, a rare genetic disorder is found that has X-linked recessive transmission. Which of the following statements is likely true regarding the pedigree of this disorder?\n(A) All descendants on the maternal side will have the disorder. (B) Females will be approximately twice as affected as males in this family. (C) All daughters of an affected male will be affected. (D) There will be equal distribution of males and females affected."
+      target: "Let's recall first that females have two X chromosomes, while males have one X and one Y chromosome. This is an important fact we need to know before answering this question. Because a male can only pass his only one X chromosome to a daughter, if he is affected by this rare genetic disorder, then we know for sure that he will pass this rare genetic disorder to all his future-born daughters. The answer is (C)."
+doc_to_text: "Question: {{question.strip() if question is defined else sent1.strip()}}\n{% if ending0 is defined %}(A) {{ending0}} (B) {{ending1}} (C) {{ending2}} (D) {{ending3}}\n{% endif %}Answer: Let's think step by step."
+doc_to_target: "{{target if target is defined else ['(A)','(B)','(C)','(D)'][label]}}"
+filter_list:
+  - name: "strict-match"
+    filter:
+      - function: "regex"
+        regex_pattern: "((?<=The answer is )(.*)(?=.)|(?<=answer is )(.*)(?=.)|(?<=The answer: )(.*)(?=.)|(?<=The final answer: )(.*)(?=.))"
+      - function: "take_first"
+  - name: "flexible-extract"
+    filter:
+      - function: "regex"
+        regex_pattern: "\\(([A-D])\\)"
+        group_select: -1
+        fallback: "[invalid]"
+      - function: "take_first"
+generation_kwargs:
+  until:
+    - "\nQuestion:"
+    - "</s>"
+    - "Q:"
+    - "<|im_end|>"
+    - "<eos>"
+    - "<end_of_turn>"
+  do_sample: false
+  temperature: 0.0
+num_fewshot: 2
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+    ignore_case: true
+    ignore_punctuation: true
+metadata:
+  version: 1.0
