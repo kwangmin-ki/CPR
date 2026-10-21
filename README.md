@@ -1,4 +1,4 @@
-# CPR: Critical-Point Routing against Catastrophic Forgetting in Domain Adaptation
+# CPR for LLMs: Critical-Point Routing against Catastrophic Forgetting in Domain Adaptation
 
 ## Installation
 
