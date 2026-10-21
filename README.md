@@ -1,11 +1,13 @@
 # CPR for LLMs: Critical-Point Routing against Catastrophic Forgetting in Domain Adaptation
 
+
 ## Installation
 
 ```bash
 conda create -n cpr python=3.11 -y && conda activate cpr
 pip install -r requirements.txt
 ```
+
 
 ## Repository structure
 
@@ -19,6 +21,7 @@ scripts/               # training and evaluation scripts
 lm-evaluation-harness/ # lm-eval with the CPR adapter (lm_eval/models/critical_wrapper.py)
 ```
 
+
 ## Training
 
 ```bash
@@ -30,6 +33,7 @@ python train_expert.py --method sft --model_path google/gemma-3-4b-pt \
 python train_router.py --base_model google/gemma-3-4b-pt \
     --expert_model checkpoints/gemma3-4b-gsm-sft --dataset gsm --tag gemma3-4b
 ```
+
 
 ## Evaluation
 
@@ -51,6 +55,7 @@ bash scripts/eval.sh
 | Math    | GSM8K (`gsm8k/gsm8k-cot-zeroshot.yaml`), ASDiv (`asdiv/asdiv-cot-manual.yaml`), SVAMP (`manual_svamp/svamp-cot-manual.yaml`) | 0 |
 | Medical | PubMedQA (`pubmedqa/pubmedqa-cot-manual.yaml`), MedQA (`medqa/medqa_cot.yaml`), CareQA (`careqa/careqa_en_cot.yaml`) | 2 |
 | General | MMLU (`mmlu_flan_cot_fewshot`), CommonsenseQA (`commonsense_qa/cot.yaml`), ARC-C (`arc/flan_cot/arc_challenge_cot.yaml`) | 2 |
+
 
 ### Methods
 
