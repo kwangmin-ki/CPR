@@ -1,14 +1,3 @@
-"""Inference wrappers for CPR and the baselines.
-
-Every wrapper exposes the same interface, used by the lm-eval adapter
-(lm-evaluation-harness/lm_eval/models/critical_wrapper.py):
-
-    text  = wrapper.generate(prompt)
-    texts = wrapper.generate_batch(prompts)
-
-All methods use greedy decoding.
-"""
-
 from __future__ import annotations
 
 import os
@@ -24,7 +13,6 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def _resolve_device_map(device: str) -> str:
-    """Shard across GPUs with accelerate when more than one GPU is visible."""
     if device.startswith("cuda") and torch.cuda.device_count() > 1:
         return "auto"
     return device
@@ -66,13 +54,7 @@ class BaseModelWrapper(ABC):
         return [self.generate(p) for p in prompts]
 
 
-# ---------------------------------------------------------------------------
-# Single-model baselines
-# ---------------------------------------------------------------------------
-
 class BaseWrapper(BaseModelWrapper):
-    """A single model with batched greedy decoding (base model)."""
-
     def __init__(
         self,
         model_path: str,
@@ -83,7 +65,6 @@ class BaseWrapper(BaseModelWrapper):
         self.max_new_tokens = max_new_tokens
         self.stop_strings = stop_strings or []
 
-        print(f"[{self.__class__.__name__}] Loading model from {model_path}")
         self.tokenizer = _load_tokenizer(model_path, padding_side="left")
         self.model = _load_model(model_path, _resolve_device_map(device), trust_remote_code=True)
         self.device = self.model.device
@@ -113,16 +94,12 @@ class BaseWrapper(BaseModelWrapper):
 
 
 class ExpertWrapper(BaseWrapper):
-    """The SFT expert alone."""
-
-
+    pass
 class LFUWrapper(BaseWrapper):
-    """A model fine-tuned with LfU (Nam et al., 2026)."""
+    pass
 
 
 class EAFTWrapper(BaseWrapper):
-    """A model fine-tuned with EAFT (eager attention, EOS from generation_config)."""
-
     def __init__(
         self,
         model_path: str,
@@ -134,7 +111,6 @@ class EAFTWrapper(BaseWrapper):
         self.device = device
         self.stop_strings = stop_strings or []
 
-        print(f"[EAFTWrapper] Loading model from {model_path}")
         self.tokenizer = _load_tokenizer(model_path, padding_side="left")
         self.model = _load_model(
             model_path, device, trust_remote_code=True, attn_implementation="eager"
@@ -144,13 +120,7 @@ class EAFTWrapper(BaseWrapper):
         return self.model.generation_config.eos_token_id
 
 
-# ---------------------------------------------------------------------------
-# Multi-model baselines
-# ---------------------------------------------------------------------------
-
 class EnsembleWrapper(BaseModelWrapper):
-    """Uniform average of the next-token distributions of all models at every step."""
-
     def __init__(
         self,
         model_paths: List[str],
@@ -164,13 +134,10 @@ class EnsembleWrapper(BaseModelWrapper):
 
         self.models = []
         self.tokenizers = []
-        print(f"[EnsembleWrapper] Loading {len(model_paths)} models...")
         for path in model_paths:
-            print(f"  {path}")
             self.tokenizers.append(_load_tokenizer(path, padding_side="left"))
             self.models.append(_load_model(path, device))
 
-        # All models are assumed to share the same vocabulary.
         self.base_tokenizer = self.tokenizers[0]
 
     def generate(self, prompt: str) -> str:
@@ -208,12 +175,6 @@ class EnsembleWrapper(BaseModelWrapper):
 
 
 class ContrastiveDecodingWrapper(BaseModelWrapper):
-    """Contrastive Decoding (Li et al., 2023) with the expert as expert and the base as amateur.
-
-    score(w) = log p_expert(w) - alpha * log p_base(w), restricted to the plausible set
-    V_head = {w : p_base(w) >= beta * max p_base}.
-    """
-
     CD_ALPHA = 0.1
     VHEAD_BETA = 0.1
 
@@ -231,13 +192,10 @@ class ContrastiveDecodingWrapper(BaseModelWrapper):
         self.cd_alpha = self.CD_ALPHA
         self.vhead_beta = self.VHEAD_BETA
 
-        print("[ContrastiveDecodingWrapper] Loading base (amateur) model...")
         self.tokenizer = _load_tokenizer(base_model_path, trust_remote_code=True, padding_side="left")
         self.base_model = _load_model(base_model_path, device, trust_remote_code=True)
 
-        print("[ContrastiveDecodingWrapper] Loading expert model...")
         self.expert_model = _load_model(expert_model_path, device, trust_remote_code=True)
-
 
     def generate(self, prompt: str) -> str:
         input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(self.device)
@@ -275,12 +233,6 @@ class ContrastiveDecodingWrapper(BaseModelWrapper):
 
 
 class SwitchGenerationWrapper(BaseModelWrapper):
-    """Switch Generation (Feng et al., 2026): a switcher LM picks a model for every patch.
-
-    The first and last patches always use candidate 1 (the expert). If
-    objective_flag is set, "The answer is" is appended before the last patch.
-    """
-
     def __init__(
         self,
         candidate_model_paths: List[str],
@@ -298,22 +250,17 @@ class SwitchGenerationWrapper(BaseModelWrapper):
 
         self.models = []
         self.tokenizers = []
-        print(f"[SwitchGenerationWrapper] Loading {len(candidate_model_paths)} candidate models...")
         for i, path in enumerate(candidate_model_paths):
-            print(f"  Candidate [{i}] {path}")
             tokenizer = _load_tokenizer(path)
             tokenizer.padding_side = "left"
             self.tokenizers.append(tokenizer)
             self.models.append(_load_model(path, "auto"))
 
-        print(f"[SwitchGenerationWrapper] Loading switcher model from {switcher_model_path}")
         self.switcher_tokenizer = _load_tokenizer(switcher_model_path)
         self.switcher_tokenizer.padding_side = "left"
         self.switcher_model = _load_model(switcher_model_path, "auto")
 
-
     def _batch_generate(self, model, tokenizer, prompts: List[str], max_new: int):
-        """Greedy batch generation; also returns whether each sequence hit EOS."""
         if not prompts:
             return [], []
         inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(model.device)
@@ -404,13 +351,6 @@ class SwitchGenerationWrapper(BaseModelWrapper):
 
 
 class RouteLLMCausalWrapper(BaseModelWrapper):
-    """RouteLLM causal-LLM classifier (Ong et al., 2025): query-level routing.
-
-    The router scores the query with the [[1]] / [[3]] / [[5]] label tokens
-    (expert wins / tie / base suffices). The base model is used when
-    softmax([[1]], [[3]], [[5]])[2] >= router_threshold, otherwise the expert.
-    """
-
     SCORE_TOKENS = ["[[1]]", "[[3]]", "[[5]]"]
     CAUSAL_INSTRUCTION = (
         "Given the following query, predict which model will produce a better "
@@ -433,15 +373,12 @@ class RouteLLMCausalWrapper(BaseModelWrapper):
         self.device = device
         self.stop_strings = stop_strings or []
 
-        print("[RouteLLMCausalWrapper] Loading base model...")
         self.tokenizer_base = _load_tokenizer(base_model_path, trust_remote_code=True, padding_side="left")
         self.base_model = _load_model(base_model_path, device, trust_remote_code=True)
 
-        print("[RouteLLMCausalWrapper] Loading expert model...")
         self.tokenizer_expert = _load_tokenizer(expert_model_path, trust_remote_code=True, padding_side="left")
         self.expert_model = _load_model(expert_model_path, device, trust_remote_code=True)
 
-        print(f"[RouteLLMCausalWrapper] Loading router from {router_model_path}")
         self.tokenizer_router = _load_tokenizer(router_model_path, trust_remote_code=True)
         self.router_model = _load_model(router_model_path, device, trust_remote_code=True)
 
@@ -459,10 +396,6 @@ class RouteLLMCausalWrapper(BaseModelWrapper):
                     missing_tokens.append(tok)
 
         if missing_tokens:
-            print(
-                f"[RouteLLMCausalWrapper] WARNING: score tokens {missing_tokens} are not single tokens "
-                f"in the router tokenizer. Adding them as special tokens (fallback)."
-            )
             self.tokenizer_router.add_special_tokens({"additional_special_tokens": missing_tokens})
             self.router_model.resize_token_embeddings(len(self.tokenizer_router))
             self._score_token_ids = []
@@ -474,11 +407,8 @@ class RouteLLMCausalWrapper(BaseModelWrapper):
                     self._score_token_ids.append(self.tokenizer_router.get_vocab()[tok])
 
         assert len(self._score_token_ids) == 3, f"Expected 3 score token IDs, got {self._score_token_ids}"
-        print(f"[RouteLLMCausalWrapper] Score token IDs: {dict(zip(self.SCORE_TOKENS, self._score_token_ids))}")
-
 
     def _route(self, prompt: str) -> bool:
-        """Return True if the query should go to the expert."""
         formatted = f"{self.CAUSAL_INSTRUCTION}\n\nQuery: {prompt}\nAnswer: "
         input_ids = self.tokenizer_router.encode(
             formatted, return_tensors="pt", add_special_tokens=True
@@ -511,26 +441,7 @@ class RouteLLMCausalWrapper(BaseModelWrapper):
         return self._truncate_at_stop(text)
 
 
-# ---------------------------------------------------------------------------
-# CPR
-# ---------------------------------------------------------------------------
-
 class CPRWrapper(BaseModelWrapper):
-    """CPR: token-level routing between the base model and its domain expert.
-
-    At every step t:
-      1. The base model always runs; its last hidden state h_t feeds the router.
-      2. p_t = sigmoid(router(h_t, c)), where c is the mean base hidden state
-         over the last question span.
-      3. m_t = alpha * m_{t-1} + (1 - alpha) * p_t
-      4. Threshold-gated dispatch:
-           m_t <  tau_low             -> base logits only (expert not run)
-           tau_low <= m_t <= tau_high -> (1 - m_t) * p_base + m_t * p_expert
-           m_t >  tau_high            -> expert logits only
-    When the expert is (re)activated, its KV cache is rebuilt over the full
-    sequence in a single batched forward pass.
-    """
-
     def __init__(
         self,
         base_model_path: str,
@@ -550,14 +461,11 @@ class CPRWrapper(BaseModelWrapper):
         self.device = device
         self.stop_strings = stop_strings or []
 
-        print("[CPR] Loading base model...")
         self.tokenizer_base = _load_tokenizer(base_model_path, trust_remote_code=True, padding_side="left")
         self.base_model = _load_model(base_model_path, device, trust_remote_code=True)
 
-        print("[CPR] Loading expert model...")
         self.expert_model = _load_model(expert_model_path, device, trust_remote_code=True)
 
-        print(f"[CPR] Loading router from {router_model_path}")
         self.router = HierarchicalRouterNetwork(input_dim=get_hidden_size(self.base_model)).to(
             device=device, dtype=torch.bfloat16
         )
@@ -567,7 +475,6 @@ class CPRWrapper(BaseModelWrapper):
         self.router.eval()
 
     def _pooled_question_context(self, prompt: str, hidden_states: torch.Tensor) -> torch.Tensor:
-        """Mean hidden state over the last question (few-shot demonstrations excluded)."""
         last_q_idx = prompt.rfind("\n\nQuestion: ")
         q_start = len(self.tokenizer_base.encode(prompt[:last_q_idx])) if last_q_idx != -1 else 0
         return hidden_states[:, q_start:, :].mean(dim=1)
@@ -608,7 +515,6 @@ class CPRWrapper(BaseModelWrapper):
                 expert_logits = None
                 if need_expert:
                     if expert_kv is None or not prev_need_expert:
-                        # KV-cache catch-up over all positions skipped by the expert.
                         exp_out = self.expert_model(generated_ids, use_cache=True)
                     else:
                         exp_out = self.expert_model(

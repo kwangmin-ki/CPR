@@ -1,9 +1,3 @@
-"""lm-eval adapter for the wrappers in the repository-root `model_wrappers.py`.
-
-Usage:
-  lm_eval --model hf-wrapper --model_args wrapper=cpr,base_model_path=...,expert_model_path=...,router_model_path=...
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -337,10 +331,6 @@ class CriticalWrapperLM(TemplateLM):
     def tok_decode(self, tokens, skip_special_tokens: bool = True):
         return self.tokenizer.decode(tokens, skip_special_tokens=skip_special_tokens)
 
-    # ------------------------------------------------------------------
-    # Log-likelihood scoring (multiple-choice tasks)
-    # ------------------------------------------------------------------
-
     def _prepare_window(
         self,
         context_enc: list[int],
@@ -466,11 +456,6 @@ class CriticalWrapperLM(TemplateLM):
         context_enc: list[int],
         continuation_enc: list[int],
     ) -> tuple[float, bool]:
-        """Score each continuation token by log p_expert - alpha * log p_base.
-
-        The V_head plausibility filter is a generation-time constraint and is not
-        applied here: it would assign -inf to filtered targets and break ranking.
-        """
         wrapper = self.wrapper_impl
         window, context_len, contlen = self._prepare_window(context_enc, continuation_enc)
         inp = torch.tensor(window[:-1], dtype=torch.long, device=self.device).unsqueeze(0)
@@ -558,10 +543,6 @@ class CriticalWrapperLM(TemplateLM):
             results.append(total)
             self.cache_hook.add_partial("loglikelihood_rolling", (string,), total)
         return results
-
-    # ------------------------------------------------------------------
-    # Generation
-    # ------------------------------------------------------------------
 
     def generate_until(self, requests, disable_tqdm: bool = False) -> list[str]:
         grouped: dict[str, list[tuple[int, str, dict[str, Any]]]] = {}

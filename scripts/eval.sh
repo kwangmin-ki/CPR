@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# Evaluate one method on the domain and general benchmarks with lm-eval.
-#
-#   WRAPPER=cpr DOMAIN=math \
-#   MODEL_ARGS="base_model_path=google/gemma-3-4b-pt,expert_model_path=checkpoints/gemma3-4b-gsm-sft,router_model_path=checkpoints/router_model_gemma3-4b_gsm.pt" \
-#   bash scripts/eval.sh
-#
-# WRAPPER: base | expert | eaft | lfu (MODEL_ARGS="pretrained=...")
-#          ensemble | cd | switch | routellm_causal | cpr
-# DOMAIN : math | medical
+# WRAPPER=cpr DOMAIN=math MODEL_ARGS="base_model_path=...,expert_model_path=...,router_model_path=..." bash scripts/eval.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -49,7 +41,6 @@ for ENTRY in "${TASKS[@]}"; do
   EXTRA=()
   [[ -n "${LIMIT}" ]] && EXTRA+=(--limit "${LIMIT}")
 
-  echo "=== ${WRAPPER} / ${TASK_NAME} ==="
   lm_eval \
     --model hf-wrapper \
     --model_args "wrapper=${WRAPPER},${MODEL_ARGS}" \
@@ -59,6 +50,5 @@ for ENTRY in "${TASKS[@]}"; do
     --device "${DEVICE}" \
     --log_samples \
     --output_path "${OUTPUT_DIR}/${TASK_NAME}" \
-    ${EXTRA[@]+"${EXTRA[@]}"} \
-    || echo "[ERROR] ${TASK_NAME} failed"
+    ${EXTRA[@]+"${EXTRA[@]}"}
 done

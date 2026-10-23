@@ -1,14 +1,3 @@
-"""Fine-tune a domain expert with SFT, or with the DFT / EAFT baselines.
-
-  sft  : standard token-level cross-entropy.
-  dft  : Wu et al., 2026. Each token loss is scaled by sg(p(y_t)).
-  eaft : Diao et al., 2026. Each token loss is scaled by the normalized top-K entropy.
-
-Usage:
-  python train_expert.py --method sft --model_path google/gemma-3-4b-pt \
-      --dataset gsm --output_dir checkpoints/gemma3-4b-gsm-sft
-"""
-
 import argparse
 import math
 
@@ -38,8 +27,6 @@ EAFT_TOP_K = 20
 
 
 class DFTTrainer(Trainer):
-    """loss = mean_t [ sg(p(y_t)) * CE_t ] over non-masked tokens."""
-
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         labels = inputs.pop("labels")
         outputs = model(**inputs)
@@ -52,7 +39,6 @@ class DFTTrainer(Trainer):
         V = shift_logits.shape[-1]
         token_loss = loss_fct(shift_logits.view(-1, V), shift_labels.view(-1))
 
-        # Clamp -100 to a valid index for gather; those positions have token_loss = 0.
         token_prob = (
             torch.softmax(shift_logits, dim=-1)
             .view(-1, V)
@@ -68,7 +54,6 @@ class DFTTrainer(Trainer):
 
 
 def eaft_loss_func(outputs, labels, num_items_in_batch=None, alpha: float = EAFT_ALPHA):
-    """loss = alpha * H_topK(t) / ln(K) * CE_t, with the entropy weight detached."""
     logits = outputs.logits
     shift_logits = logits[..., :-1, :].contiguous()
     shift_labels = labels[..., 1:].contiguous()
@@ -104,25 +89,17 @@ TRAINERS = {"sft": Trainer, "dft": DFTTrainer, "eaft": EAFTTrainer}
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Domain expert fine-tuning (SFT / DFT / EAFT)")
+    p = argparse.ArgumentParser()
     p.add_argument("--method", default="sft", choices=list(TRAINERS))
-    p.add_argument("--model_path", required=True, help="Base model (HF hub id or local path)")
-    p.add_argument("--dataset", required=True, choices=["gsm", "med"],
-                   help="gsm: GSM8K | med: PubMedQA (pqa_artificial)")
-    p.add_argument("--output_dir", required=True, help="Where to save the fine-tuned model")
+    p.add_argument("--model_path", required=True)
+    p.add_argument("--dataset", required=True, choices=["gsm", "med"])
+    p.add_argument("--output_dir", required=True)
     return p.parse_args()
 
 
 def main():
     args = parse_args()
     output_dir = args.output_dir
-
-    print(f"\n{'=' * 60}")
-    print(f"  Method  : {args.method}")
-    print(f"  Model   : {args.model_path}")
-    print(f"  Dataset : {args.dataset}")
-    print(f"  Output  : {output_dir}")
-    print(f"{'=' * 60}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     if tokenizer.pad_token is None:
@@ -174,13 +151,9 @@ def main():
         data_collator=data_collator,
     )
 
-    print(f">>> Starting {args.method.upper()} training...")
     trainer.train()
-
-    print(f">>> Saving model to {output_dir}")
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
-    print(">>> Training complete.")
 
 
 if __name__ == "__main__":

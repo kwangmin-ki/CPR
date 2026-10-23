@@ -1,13 +1,3 @@
-"""Training-data formatting for GSM8K (math) and PubMedQA (medical).
-
-Prompt formats (identical to the evaluation templates):
-  GSM8K    : "Question: {q}\nAnswer: Let's think step by step. {rationale} The answer is {a}.{eos}"
-  PubMedQA : 2-shot MMLU demonstrations + "Question: {context} {q}\n(A) .. (B) .. (C) ..\n"
-             "Answer: Let's think step by step. {long_answer} The answer is ({letter}).{eos}"
-             The yes/no/maybe option order is shuffled per sample; `maybe` samples are
-             dropped and yes/no are balanced (4,000 each).
-"""
-
 import random
 import re
 
@@ -31,14 +21,12 @@ Answer: Let's think step by step. Let's recall first that females have two X chr
 
 
 def clean_gsm8k_answer(answer: str) -> str:
-    """Drop <<calc>> annotations and rewrite '#### X' as 'The answer is X'."""
     answer = re.sub(r"<<[^>]*>>", "", answer)
     answer = re.sub(r"####\s*", "The answer is ", answer)
     return answer.strip()
 
 
 def get_choices_and_letter(decision: str, rng: random.Random) -> tuple[str, str]:
-    """Randomly permute (yes, no, maybe) to avoid a positional shortcut."""
     labels = ["yes", "no", "maybe"]
     rng.shuffle(labels)
     choices_str = f"(A) {labels[0]} (B) {labels[1]} (C) {labels[2]}"
@@ -52,7 +40,6 @@ def pubmedqa_context(ctx) -> str:
 
 
 def _tokenize_one(tokenizer, prompt: str, full_text: str, max_seq_length: int):
-    """Tokenize one sample with prompt tokens masked; return None if too long."""
     full_enc = tokenizer(full_text, truncation=False, padding=False)
     if len(full_enc["input_ids"]) > max_seq_length:
         return None
@@ -68,7 +55,6 @@ def _tokenize_one(tokenizer, prompt: str, full_text: str, max_seq_length: int):
 
 
 def load_and_tokenize_gsm(tokenizer, max_seq_length: int):
-    print(">>> Loading GSM8K train split...")
     gsm8k_raw = load_dataset("openai/gsm8k", "main", split="train")
 
     def tokenize_gsm8k(examples):
@@ -89,19 +75,10 @@ def load_and_tokenize_gsm(tokenizer, max_seq_length: int):
         tokenize_gsm8k, batched=True,
         remove_columns=gsm8k_raw.column_names, desc="Tokenizing GSM8K",
     )
-    excluded = len(gsm8k_raw) - len(gsm8k_ds)
-    print(f">>> GSM8K: {len(gsm8k_ds)} samples (excluded {excluded} > {max_seq_length} tokens)")
     return gsm8k_ds.shuffle(seed=SEED)
 
 
 def load_and_tokenize_med(tokenizer, max_seq_length: int, per_class_rng: bool = False):
-    """PubMedQA (pqa_artificial, train), balanced yes/no with shuffled options.
-
-    per_class_rng=False: one RNG shared across the yes and no splits (SFT, EAFT).
-    per_class_rng=True : separate RNGs seeded SEED / SEED+1 per split (DFT).
-    Caching is disabled so the option shuffling never depends on a cached RNG state.
-    """
-    print(">>> Loading PubMedQA (pqa_artificial) train split...")
     med_raw = load_dataset("qiaojin/PubMedQA", "pqa_artificial", split="train")
     valid_decisions = {"yes", "no"}
 
@@ -151,7 +128,6 @@ def load_and_tokenize_med(tokenizer, max_seq_length: int, per_class_rng: bool = 
 
     yes_raw = med_raw.filter(lambda x: str(x["final_decision"]).lower() == "yes")
     no_raw = med_raw.filter(lambda x: str(x["final_decision"]).lower() == "no")
-    print(f">>> PubMedQA raw: yes={len(yes_raw)}, no={len(no_raw)} (maybe excluded)")
 
     yes_ds = yes_raw.map(
         yes_fn, batched=True, load_from_cache_file=False,
@@ -164,6 +140,5 @@ def load_and_tokenize_med(tokenizer, max_seq_length: int, per_class_rng: bool = 
 
     yes_ds = yes_ds.select(range(min(MED_SAMPLES_PER_CLASS, len(yes_ds))))
     no_ds = no_ds.select(range(min(MED_SAMPLES_PER_CLASS, len(no_ds))))
-    print(f">>> PubMedQA balanced: yes={len(yes_ds)}, no={len(no_ds)}, total={len(yes_ds) + len(no_ds)}")
 
     return concatenate_datasets([yes_ds, no_ds]).shuffle(seed=SEED)

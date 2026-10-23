@@ -1,13 +1,8 @@
-"""Hierarchical router for CPR: maps the base model's last-layer hidden state h_t
-and the pooled question context c to an expert-call logit."""
-
 import torch
 import torch.nn as nn
 
 
 class HierarchicalRouterNetwork(nn.Module):
-    """Macro encoder over the pooled question context + token-level micro router."""
-
     def __init__(self, input_dim: int, hidden_dim: int = 256):
         super().__init__()
         self.macro_encoder = nn.Sequential(
@@ -27,6 +22,5 @@ class HierarchicalRouterNetwork(nn.Module):
 
 
 def get_hidden_size(model) -> int:
-    """Hidden size of a causal LM (Gemma3 nests it under `text_config`)."""
     cfg = model.config
     return cfg.text_config.hidden_size if hasattr(cfg, "text_config") else cfg.hidden_size
